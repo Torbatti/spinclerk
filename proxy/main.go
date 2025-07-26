@@ -14,6 +14,22 @@ var Version = "(untracked)"
 
 func main() {
 
+	udp_addr_string := "0.0.0.0:19653"
+	tcp_addr_string := "0.0.0.0:19652"
+
+	args := os.Args
+	for i, v := range args {
+		switch v {
+		case "udp":
+			// todo: this can break via adding anything but an address
+			udp_addr_string = args[i+1]
+		case "tcp":
+			// todo: this can break via adding anything but an address
+			tcp_addr_string = args[i+1]
+
+		}
+	}
+
 	done := make(chan bool, 1)
 
 	go func() {
@@ -25,13 +41,13 @@ func main() {
 	}()
 
 	go func() {
-		ListenTcp()
+		ListenTcp(tcp_addr_string)
 
 		done <- true
 	}()
 
 	go func() {
-		ListenUdp()
+		ListenUdp(udp_addr_string)
 
 		done <- true
 	}()
@@ -56,13 +72,13 @@ func ReadVarInt(buffer []byte) int {
 	return 0
 }
 
-func ListenTcp() {
-	addr := net.TCPAddr{
-		Port: 19652,
-		IP:   net.ParseIP("127.0.0.1"),
+func ListenTcp(addr_string string) {
+	addr, err := net.ResolveTCPAddr("tcp", addr_string)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	listener, err := net.ListenTCP("tcp", &addr)
+	listener, err := net.ListenTCP("tcp", addr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -165,13 +181,13 @@ func HandleRecvFromTargetTCP(client net.Conn, target net.Conn, client_id int) {
 	}
 }
 
-func ListenUdp() {
-	addr := net.UDPAddr{
-		Port: 19653,
-		IP:   net.ParseIP("0.0.0.0"),
+func ListenUdp(addr_string string) {
+	addr, err := net.ResolveUDPAddr("udp", addr_string)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	listener, err := net.ListenUDP("udp", &addr)
+	listener, err := net.ListenUDP("udp", addr)
 	if err != nil {
 		log.Fatal(err)
 	}
