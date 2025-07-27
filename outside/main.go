@@ -238,6 +238,7 @@ func Outside() {
 		//
 		// Prevent From Accepting New Clients
 		//
+		// TODO: MAYBE remove the whole goroutine? should behave the same
 		done := make(chan bool, 1)
 		go func() {
 			time.Sleep(time.Second * 2)
@@ -315,10 +316,90 @@ func Tunnel(outside *net.TCPListener, inside net.Conn, ictl []net.Conn) {
 		client_tcp_list[client_id] = client
 		client_tcp_occupied[client_id] = true
 
-		go Client(client_tcp_list[client_id], ictl[client_id], client_id, &client_tcp_count)
+		go ListenClient(client_tcp_list[client_id], ictl[client_id], client_id, &client_tcp_count, client_tcp_occupied)
+		go ListenInside(client_tcp_list[client_id], ictl[client_id], client_id, &client_tcp_count, client_tcp_occupied)
 
 	}
 
+}
+
+func ListenClient(client net.Conn, inside net.Conn, client_id int, ctc *int, cto []bool) {
+	// TODO: ADD TIMEOUT
+	// TODO: CHECK AND REMOVE CLIENT
+
+	//
+	// Alert Inside client that a new connection was made
+	//
+	start_buffer := make([]byte, 1)
+	copy(start_buffer, []byte("0"))
+
+	write, err := WriteAll(inside, start_buffer, len(start_buffer))
+	if err != nil {
+		log.Println("ListenClient ", client_id, " write all to inside failed , err: ", err.Error())
+		cto[client_id] = false
+		defer client.Close()
+		return
+	}
+	if write != 1 {
+		log.Println("ListenClient ", client_id, " write all to inside failed")
+		return
+	}
+
+	//
+	// Read from client -> Send to inside PHASE
+	//
+	for {
+		read_buffer := make([]byte, PACKET_SIZE)
+		read, err := client.Read(read_buffer)
+		if err != nil {
+			log.Println("ListenClient ", client_id, " read from client failed , err:", err.Error())
+			continue
+		}
+		if read == 0 {
+			continue
+		}
+
+		write_buffer := make([]byte, read)
+		copy(write_buffer, read_buffer[:read])
+		write, err := WriteAll(inside, write_buffer, read)
+		if err != nil {
+			continue
+		}
+		if write != 1 {
+			log.Println("ListenClient ", client_id, " write all to inside failed , err:", err.Error())
+			continue
+		}
+	}
+
+}
+
+func ListenInside(client net.Conn, inside net.Conn, client_id int, ctc *int, cto []bool) {
+
+	//
+	// Read from inside -> Send to client PHASE
+	//
+	for {
+		read_buffer := make([]byte, PACKET_SIZE)
+		read, err := inside.Read(read_buffer)
+		if err != nil {
+			log.Println("ListenClient ", client_id, " read from inside failed , err:", err.Error())
+			continue
+		}
+		if read == 0 {
+			continue
+		}
+
+		write_buffer := make([]byte, read)
+		copy(write_buffer, read_buffer[:read])
+		write, err := WriteAll(client, write_buffer, read)
+		if err != nil {
+			continue
+		}
+		if write != 1 {
+			log.Println("ListenClient ", client_id, " write all to client failed , err:", err.Error())
+			continue
+		}
+	}
 }
 
 func first_occupied(list []bool) (int, error) {
@@ -330,83 +411,6 @@ func first_occupied(list []bool) (int, error) {
 		continue
 	}
 	return 0, errors.New("no empty slots in list ")
-}
-
-func Client(client net.Conn, inside net.Conn, client_id int, ctc *int) {
-
-	log.Println(client_id, "New Client Read Started")
-
-	read_buffer := make([]byte, PACKET_SIZE)
-
-	read, err := client.Read(read_buffer)
-
-	if err != nil {
-		log.Print(err)
-		return
-	}
-
-	if read == 0 {
-		return
-	}
-
-	log.Println(client_id, "client read ", read)
-
-	if read <= 16 {
-		log.Println(client_id, "client read buffer ", read_buffer[:read])
-	} else {
-		log.Println(client_id, "client read buffer ", read_buffer[:16])
-	}
-
-	WriteInside(inside, client_id, read, read_buffer)
-
-}
-
-func ListenInside(inside net.Conn, tcl []net.Conn) {
-	log.Println("New Inside Read Started")
-
-	read_buffer := make([]byte, MSG_SIZE)
-
-	read, err := inside.Read(read_buffer)
-
-	go ListenInside(inside, tcl)
-
-	if err != nil {
-		log.Print(err)
-		return
-	}
-
-	if read == 0 {
-		return
-	}
-
-	if read <= 3 { // read useless info
-		return
-	}
-
-	// client_id += int(read_buffer[1]) << 8
-	client_id := 0
-	client_id += int(read_buffer[2])
-	// TODO: assert if client id is bigger than client count +-1
-
-	log.Println("outside read ", read)
-	// log.Println("outside readbuffer ", read_buffer[:5])
-	if read <= 16 {
-		log.Println(client_id, "outside readbuffer buffer ", read_buffer[:read])
-	} else {
-		log.Println(client_id, "outside readbuffer buffer ", read_buffer[:16])
-	}
-
-	write_buffer := make([]byte, read-3)
-	copy(write_buffer, read_buffer[3:read])
-
-	switch read_buffer[0] {
-	case 1: // TCP
-		WriteTcpClient(tcl[client_id], client_id, read-3, write_buffer)
-
-	case 2: // udp
-		panic("UDP NOT IMPLEMENTED")
-	}
-
 }
 
 func ReadVarInt(buf []byte) (len int, out int) {
@@ -449,7 +453,7 @@ func ReadAll(conn net.Conn, buf []byte, len int) (int, error) {
 func WriteAll(conn net.Conn, buf []byte, len int) (int, error) {
 	var i = 0
 	for i < len { // ALERT: INFINITE LOOP CAN HAPPEN
-		write, err := conn.Write(buf)
+		write, err := conn.Write(buf[i:])
 		if err != nil {
 			log.Println("WriteAll failed , err", err)
 			continue
