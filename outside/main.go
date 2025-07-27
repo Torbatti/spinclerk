@@ -20,10 +20,10 @@ const (
 	MSG_SIZE = 2097154 + 3
 
 	OUT_ADDR_STR = "0.0.0.0:19654"
-	UDP_ADDR_STR = "0.0.0.0:19132"
-	TCP_ADDR_STR = "0.0.0.0:25565"
-	// UDP_ADDR_STR = "0.0.0.0:19655"
-	// TCP_ADDR_STR = "0.0.0.0:19656"
+	// UDP_ADDR_STR = "0.0.0.0:19132"
+	// TCP_ADDR_STR = "0.0.0.0:25565"
+	UDP_ADDR_STR = "0.0.0.0:19655"
+	TCP_ADDR_STR = "0.0.0.0:19656"
 
 	// very secret dont commit this to git!!!!
 	SECRET = "4ZN9GZU8LBIIYZ76HJMQLKJGZ52RULK2PFVYK64HYGX75UNHLX9FY2SHPX5WWL8I"
@@ -112,8 +112,17 @@ func Outside() {
 			continue
 		}
 
-		go Tunnel(inside)
+		//
+		// Prevent From Accepting New Clients
+		//
+		done := make(chan bool, 1)
+		go func() {
 
+			Tunnel(inside)
+			done <- true
+
+		}()
+		<-done
 	}
 
 }
