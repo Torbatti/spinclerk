@@ -26,7 +26,7 @@ const (
 	TCP_ADDR_STR = "0.0.0.0:19656"
 
 	// very secret dont commit this to git!!!!
-	SECRET = "4ZN9GZU8LBIIYZ76HJMQLKJGZ52RULK2PFVYK64HYGX75UNHLX9FY2SHPX5WWL8I"
+	OUTSIDE_SECRET = "4ZN9GZU8LBIIYZ76HJMQLKJGZ52RULK2PFVYK64HYGX75UNHLX9FY2SHPX5WWL8I"
 )
 
 func main() {
@@ -60,6 +60,9 @@ func Outside() {
 	var listener *net.TCPListener = nil
 	var listener_addr *net.TCPAddr = nil
 
+	var accept_loop = 0
+	var inside net.Conn = nil
+
 	for {
 		listener_addr, err = net.ResolveTCPAddr("tcp", OUT_ADDR_STR)
 		if err != nil {
@@ -76,58 +79,77 @@ func Outside() {
 		break
 	}
 
-	// ASSERTIONS
-	if listener == nil {
+	if listener == nil { // ASSERTION
 		log.Fatal("Outside Listener SHOULD NOT be nil")
+		return
 	}
-	if listener_addr == nil {
+	if listener_addr == nil { // ASSERTION
 		log.Fatal("Outside ListenerAddr SHOULD NOT be nil")
+		return
 	}
 
-	accept_loop := 0
 	for {
 		accept_loop += 1
 		log.Println("Outside accept inside loop ", accept_loop, " started")
 
-		inside, err := listener.Accept()
+		inside, err = listener.Accept()
 		if err != nil {
-			log.Println("Outside accept new inside , err: ", err.Error())
+			log.Println("Outside accept new inside failed, err: ", err.Error())
 			continue
+		}
+
+		if inside == nil { // ASSERTION
+			log.Fatal("Inside net.Conn SHOULD NOT be nil")
+			return
 		}
 
 		read_buffer := make([]byte, 64)
 
 		read, err := inside.Read(read_buffer)
 		if err != nil {
-			log.Println("Outside read from inside , err: ", err.Error())
+			log.Println("Outside read from inside failed , err: ", err.Error())
+			continue
+		}
+		if read == 0 {
+			continue
+		}
+		if read != 64 {
+			log.Println("Outside couldnt read 64 bytes from inside")
 			continue
 		}
 
-		if read == 0 {
+		if string(read_buffer) == OUTSIDE_SECRET {
+			log.Println("Outside read OUTSIDE_SECRET from inside")
+		} else {
+			log.Println("Outside couldnt read OUTSIDE_SECRET from inside")
 			continue
 		}
 
 		// THIS CAN FAIL USE A WRITE ALL FUNCTION!!!!
 		write, err := inside.Write([]byte("OK"))
 		if err != nil {
-			log.Println("Outside write to inside , err: ", err.Error())
+			log.Println("Outside write to inside failed , err: ", err.Error())
 			continue
 		}
 		if write == 0 {
 			continue
 		}
-		if write < 2 {
+		if write != 2 {
+			log.Println("Outside couldnt write 2 bytes to inside")
 			continue
 		}
 
 		read_buffer = make([]byte, 2)
 		read, err = inside.Read(read_buffer)
 		if err != nil {
-			log.Println("Outside read from inside , err: ", err.Error())
+			log.Println("Outside read from inside failed , err: ", err.Error())
 			continue
 		}
-
 		if read == 0 {
+			continue
+		}
+		if write != 2 {
+			log.Println("Outside couldnt read 2 bytes from inside")
 			continue
 		}
 
