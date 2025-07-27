@@ -6,19 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
-
-//
-//
-//
-//
-//
-//
-
-// road map:
-// - [ ] add cli
-//
-//
 
 var Version = "(untracked)"
 
@@ -49,6 +38,11 @@ const (
 func main() {
 	log.Println("version:", Version)
 
+	if MAX_CLIENT_SIZE == TCP_CLIENT_SIZE+UDP_CLIENT_SIZE { // ASSERTION
+		log.Fatal("TCP_CLIENT_SIZE + UDP_CLIENT_SIZE don't add up to MAX_CLIENT_SIZE")
+		return
+	}
+
 	done := make(chan bool, 1)
 
 	go func() {
@@ -74,11 +68,6 @@ func main() {
 
 func Outside() {
 	log.Println("Outside started")
-
-	if MAX_CLIENT_SIZE == TCP_CLIENT_SIZE+UDP_CLIENT_SIZE { // ASSERTION
-		log.Fatal("TCP_CLIENT_SIZE + UDP_CLIENT_SIZE don't add up to MAX_CLIENT_SIZE")
-		return
-	}
 
 	var err error
 
@@ -220,12 +209,16 @@ func Outside() {
 
 			}
 
+			// TODO: READ AND WRITE OK FROM INSIDE/OUTSIDE for each client?
+
 			if inside_client_tcp_count == TCP_CLIENT_SIZE {
 				log.Println("Outside connected to 64 inside clients")
 				break
 			}
+
 		}
 
+		// TODO: find a way to assert this
 		if inside_client_tcp_list == nil { // ASSERTION
 			log.Fatal("Inside tcp client list SHOULD NOT be nil")
 			return
@@ -241,8 +234,9 @@ func Outside() {
 		//
 		done := make(chan bool, 1)
 		go func() {
+			time.Sleep(time.Second * 20)
 
-			Tunnel(listener, inside, inside_client_tcp_list)
+			// Tunnel(listener, inside, inside_client_tcp_list)
 			done <- true
 
 		}()
@@ -253,33 +247,33 @@ func Outside() {
 
 }
 
-func Tunnel(outside *net.TCPListener, inside net.Conn, ictl []net.Conn) {
-	log.Println("Tunnel Started")
+// func Tunnel(outside *net.TCPListener, inside net.Conn, ictl []net.Conn) {
+// 	log.Println("Tunnel Started")
 
-	//
-	client_tcp_count := 0
-	client_tcp_list := make([]net.Conn, 64)
-	client_tcp_occupied_list := make([]bool, 64)
+// 	//
+// 	client_tcp_count := 0
+// 	client_tcp_list := make([]net.Conn, 64)
+// 	client_tcp_occupied_list := make([]bool, 64)
 
-	inside_client_tcp_cioccupy_list := make([]bool, 64)
+// 	inside_client_tcp_cioccupy_list := make([]bool, 64)
 
-	//
-	tcp_addr, err := net.ResolveTCPAddr("tcp", TCP_ADDR_STR)
-	if err != nil {
-		log.Fatal(err)
-	}
+// 	//
+// 	tcp_addr, err := net.ResolveTCPAddr("tcp", TCP_ADDR_STR)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
 
-	tcp_listener, err := net.ListenTCP("tcp", tcp_addr)
-	if err != nil {
-		log.Fatal(err)
-	}
+// 	tcp_listener, err := net.ListenTCP("tcp", tcp_addr)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
 
-	//
-	// go ListenInside(inside, tcp_client_list, udp_client_list)
-	go ListenTcp(inside, tcp_listener, &tcp_client_count, tcp_client_list)
-	go ListenInside(inside, tcp_client_list)
+// 	//
+// 	// go ListenInside(inside, tcp_client_list, udp_client_list)
+// 	go ListenTcp(inside, tcp_listener, &tcp_client_count, tcp_client_list)
+// 	go ListenInside(inside, tcp_client_list)
 
-}
+// }
 
 func ListenTcp(inside net.Conn, listener *net.TCPListener, tcc *int, tcl []net.Conn) {
 	log.Println("ListenTcp Started")
