@@ -55,21 +55,32 @@ func main() {
 func Outside() {
 	log.Println("Outside Started")
 
-	addr, err := net.ResolveTCPAddr("tcp", OUT_ADDR_STR)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	listener, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		log.Fatal(err)
-	}
+	var listener *net.TCPListener = nil
 
 	for {
+		addr, err := net.ResolveTCPAddr("tcp", OUT_ADDR_STR)
+		if err != nil {
+			log.Println("Outside ResolveTCPAddr failed , err: ", err.Error())
+			continue
+		}
+
+		listener, err = net.ListenTCP("tcp", addr)
+		if err != nil {
+			log.Println("Outside ListenTCP failed , err: ", err.Error())
+			continue
+		}
+
+		break
+	}
+
+	accept_loop := 0
+	for {
+		accept_loop += 1
+		log.Println("Outside accept inside loop ", accept_loop, " started")
 
 		inside, err := listener.Accept()
 		if err != nil {
-			log.Fatal(err)
+			log.Println("Outside accept new inside , err: ", err.Error())
 			continue
 		}
 
@@ -77,7 +88,7 @@ func Outside() {
 
 		read, err := inside.Read(read_buffer)
 		if err != nil {
-			// log.Print(err)
+			log.Println("Outside read from inside , err: ", err.Error())
 			continue
 		}
 
@@ -85,20 +96,23 @@ func Outside() {
 			continue
 		}
 
+		// THIS CAN FAIL USE A WRITE ALL FUNCTION!!!!
 		write, err := inside.Write([]byte("OK"))
 		if err != nil {
-			// log.Print(err)
+			log.Println("Outside write to inside , err: ", err.Error())
 			continue
 		}
-
 		if write == 0 {
+			continue
+		}
+		if write < 2 {
 			continue
 		}
 
 		read_buffer = make([]byte, 2)
 		read, err = inside.Read(read_buffer)
 		if err != nil {
-			// log.Print(err)
+			log.Println("Outside read from inside , err: ", err.Error())
 			continue
 		}
 
@@ -107,8 +121,9 @@ func Outside() {
 		}
 
 		if string(read_buffer) == "OK" {
-			log.Println("NEW INSIDER")
+			log.Println("Outside read OK from inside")
 		} else {
+			log.Println("Outside couldnt read OK from inside")
 			continue
 		}
 
@@ -118,21 +133,59 @@ func Outside() {
 		done := make(chan bool, 1)
 		go func() {
 
-			Tunnel(inside)
+			Tunnel(listener, inside)
 			done <- true
 
 		}()
 		<-done
+
+		log.Println("Outside accept inside loop ended")
 	}
 
 }
 
-func Tunnel(inside net.Conn) {
+func Tunnel(outside *net.TCPListener, inside net.Conn) {
 	log.Println("Tunnel Started")
 
 	//
-	tcp_client_count := 0
-	tcp_client_list := make([]net.Conn, 1024)
+	client_tcp_count := 0
+	client_tcp_list := make([]net.Conn, 64)
+	client_tcp_occupied_list := make([]bool, 64)
+
+	inside_client_tcp_count := 0
+	inside_client_tcp_list := make([]net.Conn, 64)
+	inside_client_tcp_cioccupy_list := make([]bool, 64)
+
+	for {
+		outside.Accept()
+
+		client, err := outside.Accept()
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+		log.Println("")
+
+		log.Println(client.RemoteAddr().String())
+		log.Println(client.LocalAddr().String())
+
+		log.Println(inside.RemoteAddr().String())
+		log.Println(inside.LocalAddr().String())
+
+		log.Println("")
+
+		if client.RemoteAddr().String() == inside.RemoteAddr().String() {
+
+			inside_client_tcp_list[inside_client_tcp_count] = client
+			inside_client_tcp_count += 1
+
+		}
+
+		if inside_client_tcp_count == 64 {
+			break
+		}
+	}
 
 	//
 	tcp_addr, err := net.ResolveTCPAddr("tcp", TCP_ADDR_STR)
