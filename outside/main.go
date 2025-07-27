@@ -38,7 +38,12 @@ const (
 	TCP_ADDR_STR = "0.0.0.0:19656"
 
 	// very secret dont commit this to git!!!!
-	OUTSIDE_SECRET = "4ZN9GZU8LBIIYZ76HJMQLKJGZ52RULK2PFVYK64HYGX75UNHLX9FY2SHPX5WWL8I"
+	OUTSIDE_SECRET     = "4ZN9GZU8LBIIYZ76HJMQLKJGZ52RULK2PFVYK64HYGX75UNHLX9FY2SHPX5WWL8I"
+	OUTSIDE_SECRET_LEN = 64
+
+	MAX_CLIENT_SIZE = 64
+	TCP_CLIENT_SIZE = 32
+	UDP_CLIENT_SIZE = 32
 )
 
 func main() {
@@ -70,6 +75,11 @@ func main() {
 func Outside() {
 	log.Println("Outside started")
 
+	if MAX_CLIENT_SIZE == TCP_CLIENT_SIZE+UDP_CLIENT_SIZE { // ASSERTION
+		log.Fatal("TCP_CLIENT_SIZE + UDP_CLIENT_SIZE don't add up to MAX_CLIENT_SIZE")
+		return
+	}
+
 	var err error
 
 	var listener *net.TCPListener = nil
@@ -77,6 +87,9 @@ func Outside() {
 
 	var accept_loop = 0
 	var inside net.Conn = nil
+
+	var inside_client_tcp_count = 0
+	var inside_client_tcp_list []net.Conn = nil
 
 	for {
 		//
@@ -126,7 +139,7 @@ func Outside() {
 		//
 		// Read OUTSIDE_SECRET phase
 		//
-		read_buffer := make([]byte, 64)
+		read_buffer := make([]byte, OUTSIDE_SECRET_LEN)
 		read, err := inside.Read(read_buffer)
 		if err != nil {
 			log.Println("Outside read from inside failed , err: ", err.Error())
@@ -135,8 +148,8 @@ func Outside() {
 		if read == 0 {
 			continue
 		}
-		if read != 64 {
-			log.Println("Outside couldnt read 64 bytes from inside")
+		if read != OUTSIDE_SECRET_LEN {
+			log.Println("Outside couldnt read ", OUTSIDE_SECRET_LEN, " bytes from inside")
 			continue
 		}
 
@@ -176,7 +189,7 @@ func Outside() {
 		if read == 0 {
 			continue
 		}
-		if write != 2 {
+		if read != 2 {
 			log.Println("Outside couldnt read 2 bytes from inside")
 			continue
 		}
@@ -189,12 +202,47 @@ func Outside() {
 		}
 
 		//
+		// Accept inside clients phase
+		//
+		inside_client_tcp_list = make([]net.Conn, 64)
+		for { // ALERT: INFINITE LOOP CAN HAPPEN
+
+			client, err := listener.Accept()
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+
+			if client.RemoteAddr().String() == inside.RemoteAddr().String() {
+
+				inside_client_tcp_list[inside_client_tcp_count] = client
+				inside_client_tcp_count += 1
+
+			}
+
+			if inside_client_tcp_count == TCP_CLIENT_SIZE {
+				log.Println("Outside connected to 64 inside clients")
+				break
+			}
+		}
+
+		if inside_client_tcp_list == nil { // ASSERTION
+			log.Fatal("Inside tcp client list SHOULD NOT be nil")
+			return
+		}
+
+		if inside_client_tcp_count != TCP_CLIENT_SIZE { // ASSERTION
+			log.Fatal("Inside tcp client count SHOULD Be ", TCP_CLIENT_SIZE, " instead of ", inside_client_tcp_count)
+			return
+		}
+
+		//
 		// Prevent From Accepting New Clients
 		//
 		done := make(chan bool, 1)
 		go func() {
 
-			Tunnel(listener, inside)
+			Tunnel(listener, inside, inside_client_tcp_list)
 			done <- true
 
 		}()
@@ -205,7 +253,7 @@ func Outside() {
 
 }
 
-func Tunnel(outside *net.TCPListener, inside net.Conn) {
+func Tunnel(outside *net.TCPListener, inside net.Conn, ictl []net.Conn) {
 	log.Println("Tunnel Started")
 
 	//
@@ -213,40 +261,7 @@ func Tunnel(outside *net.TCPListener, inside net.Conn) {
 	client_tcp_list := make([]net.Conn, 64)
 	client_tcp_occupied_list := make([]bool, 64)
 
-	inside_client_tcp_count := 0
-	inside_client_tcp_list := make([]net.Conn, 64)
 	inside_client_tcp_cioccupy_list := make([]bool, 64)
-
-	for {
-		outside.Accept()
-
-		client, err := outside.Accept()
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-
-		log.Println("")
-
-		log.Println(client.RemoteAddr().String())
-		log.Println(client.LocalAddr().String())
-
-		log.Println(inside.RemoteAddr().String())
-		log.Println(inside.LocalAddr().String())
-
-		log.Println("")
-
-		if client.RemoteAddr().String() == inside.RemoteAddr().String() {
-
-			inside_client_tcp_list[inside_client_tcp_count] = client
-			inside_client_tcp_count += 1
-
-		}
-
-		if inside_client_tcp_count == 64 {
-			break
-		}
-	}
 
 	//
 	tcp_addr, err := net.ResolveTCPAddr("tcp", TCP_ADDR_STR)
@@ -378,6 +393,41 @@ func ReadVarInt(buf []byte) (len int, out int) {
 		}
 	}
 
+}
+
+// TODO: Handle infinite err loop
+// MAYBE return on err?
+//
+// TODO: Handle when readall reads exceed buf/len size
+func ReadAll(conn net.Conn, buf []byte, len int) (int, error) {
+	var i = 0
+	for i < len { // ALERT: INFINITE LOOP CAN HAPPEN
+		read, err := conn.Read(buf)
+		if err != nil {
+			log.Println("ReadAll failed , err", err)
+			continue
+		}
+
+		i = i + read
+	}
+
+	return i, nil
+}
+
+// TODO: Handle infinite err loop
+func WriteAll(conn net.Conn, buf []byte, len int) (int, error) {
+	var i = 0
+	for i < len { // ALERT: INFINITE LOOP CAN HAPPEN
+		write, err := conn.Write(buf)
+		if err != nil {
+			log.Println("WriteAll failed , err", err)
+			continue
+		}
+
+		i = i + write
+	}
+
+	return i, nil
 }
 
 // INFINITE LOOP NOTICE!!!!
