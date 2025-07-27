@@ -38,7 +38,7 @@ const (
 func main() {
 	log.Println("version:", Version)
 
-	if MAX_CLIENT_SIZE == TCP_CLIENT_SIZE+UDP_CLIENT_SIZE { // ASSERTION
+	if MAX_CLIENT_SIZE != TCP_CLIENT_SIZE+UDP_CLIENT_SIZE { // ASSERTION
 		log.Fatal("TCP_CLIENT_SIZE + UDP_CLIENT_SIZE don't add up to MAX_CLIENT_SIZE")
 		return
 	}
