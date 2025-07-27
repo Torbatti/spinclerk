@@ -79,6 +79,9 @@ func Outside() {
 	var inside net.Conn = nil
 
 	for {
+		//
+		// Listener start Phase
+		//
 		listener_addr, err = net.ResolveTCPAddr("tcp", OUT_ADDR_STR)
 		if err != nil {
 			log.Println("Outside ResolveTCPAddr failed , err: ", err.Error())
