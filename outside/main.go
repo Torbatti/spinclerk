@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"net"
 	"os"
@@ -252,61 +253,92 @@ func Outside() {
 
 }
 
-// func Tunnel(outside *net.TCPListener, inside net.Conn, ictl []net.Conn) {
-// 	log.Println("Tunnel Started")
+func Tunnel(outside *net.TCPListener, inside net.Conn, ictl []net.Conn) {
+	log.Println("Tunnel Started")
 
-// 	//
-// 	client_tcp_count := 0
-// 	client_tcp_list := make([]net.Conn, 64)
-// 	client_tcp_occupied_list := make([]bool, 64)
+	var err error
 
-// 	inside_client_tcp_cioccupy_list := make([]bool, 64)
+	var tcp_addr *net.TCPAddr = nil
+	var tcp_listener *net.TCPListener = nil
 
-// 	//
-// 	tcp_addr, err := net.ResolveTCPAddr("tcp", TCP_ADDR_STR)
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
+	client_tcp_count := 0
+	client_tcp_list := make([]net.Conn, TCP_CLIENT_SIZE)
+	client_tcp_occupied := make([]bool, TCP_CLIENT_SIZE)
 
-// 	tcp_listener, err := net.ListenTCP("tcp", tcp_addr)
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
+	// TODO: break it into 2 for loops to handle error
+	// TODO: add maxium retries per each for loop -> prevents infinite looping
+	for { // ALERT: INFINITE LOOP CAN HAPPEN
+		tcp_addr, err = net.ResolveTCPAddr("tcp", TCP_ADDR_STR)
+		if err != nil {
+			log.Println("Outside ResolveTCPAddr failed , err:", err.Error())
+			continue
+		}
 
-// 	//
-// 	// go ListenInside(inside, tcp_client_list, udp_client_list)
-// 	go ListenTcp(inside, tcp_listener, &tcp_client_count, tcp_client_list)
-// 	go ListenInside(inside, tcp_client_list)
+		tcp_listener, err = net.ListenTCP("tcp", tcp_addr)
+		if err != nil {
+			log.Println("Outside ListenTCP failed , err:", err.Error())
+			continue
+		}
 
-// }
+		break
+	}
 
-func ListenTcp(inside net.Conn, listener *net.TCPListener, tcc *int, tcl []net.Conn) {
-	log.Println("ListenTcp Started")
+	if tcp_addr == nil { // ASSERTION
+		log.Fatal("Outside tcp_addr SHOULD NOT be nil")
+		return
+	}
+	if tcp_listener == nil { // ASSERTION
+		log.Fatal("Outside tcp_listener SHOULD NOT be nil")
+		return
+	}
 
 	for {
-		client, err := listener.Accept()
+		// TODO: MAYBE Less CPU?
+		if client_tcp_count == TCP_CLIENT_SIZE {
+			time.Sleep(time.Second * 1)
+			continue
+		}
+
+		client, err := tcp_listener.Accept()
 		if err != nil {
 			// log.Print(err)
 			continue
 		}
 
-		*tcc += 1
-		tcl[*tcc-1] = client
+		client_id, err := first_occupied(client_tcp_occupied)
+		if err != nil {
+			log.Fatalln("list shouldnt be full but it is ,err:", err.Error())
+			return
+		}
 
-		go ListenClient(client, inside, *tcc-1)
+		client_tcp_count += 1
+		client_tcp_list[client_id] = client
+		client_tcp_occupied[client_id] = true
+
+		go Client(client_tcp_list[client_id], ictl[client_id], client_id, &client_tcp_count)
 
 	}
+
 }
 
-func ListenClient(client net.Conn, inside net.Conn, client_id int) {
+func first_occupied(list []bool) (int, error) {
+
+	for i, v := range list {
+		if v {
+			return i, nil
+		}
+		continue
+	}
+	return 0, errors.New("no empty slots in list ")
+}
+
+func Client(client net.Conn, inside net.Conn, client_id int, ctc *int) {
 
 	log.Println(client_id, "New Client Read Started")
 
 	read_buffer := make([]byte, PACKET_SIZE)
 
 	read, err := client.Read(read_buffer)
-
-	go ListenClient(client, inside, client_id)
 
 	if err != nil {
 		log.Print(err)
