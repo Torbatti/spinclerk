@@ -55,22 +55,33 @@ func main() {
 func Outside() {
 	log.Println("Outside Started")
 
+	var err error
+
 	var listener *net.TCPListener = nil
+	var listener_addr *net.TCPAddr = nil
 
 	for {
-		addr, err := net.ResolveTCPAddr("tcp", OUT_ADDR_STR)
+		listener_addr, err = net.ResolveTCPAddr("tcp", OUT_ADDR_STR)
 		if err != nil {
 			log.Println("Outside ResolveTCPAddr failed , err: ", err.Error())
 			continue
 		}
 
-		listener, err = net.ListenTCP("tcp", addr)
+		listener, err = net.ListenTCP("tcp", listener_addr)
 		if err != nil {
 			log.Println("Outside ListenTCP failed , err: ", err.Error())
 			continue
 		}
 
 		break
+	}
+
+	// ASSERTIONS
+	if listener == nil {
+		log.Fatal("Outside Listener SHOULD NOT be nil")
+	}
+	if listener_addr == nil {
+		log.Fatal("Outside ListenerAddr SHOULD NOT be nil")
 	}
 
 	accept_loop := 0
