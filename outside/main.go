@@ -8,6 +8,18 @@ import (
 	"syscall"
 )
 
+//
+//
+//
+//
+//
+//
+
+// road map:
+// - [ ] add cli
+//
+//
+
 var Version = "(untracked)"
 
 const (
@@ -30,6 +42,7 @@ const (
 )
 
 func main() {
+	log.Println("version:", Version)
 
 	done := make(chan bool, 1)
 
@@ -45,6 +58,8 @@ func main() {
 
 		Outside()
 
+		log.Println("Outside ended")
+
 		done <- true
 	}()
 
@@ -53,7 +68,7 @@ func main() {
 }
 
 func Outside() {
-	log.Println("Outside Started")
+	log.Println("Outside started")
 
 	var err error
 
@@ -92,19 +107,23 @@ func Outside() {
 		accept_loop += 1
 		log.Println("Outside accept inside loop ", accept_loop, " started")
 
+		//
+		// accept phase
+		//
 		inside, err = listener.Accept()
 		if err != nil {
 			log.Println("Outside accept new inside failed, err: ", err.Error())
 			continue
 		}
-
 		if inside == nil { // ASSERTION
 			log.Fatal("Inside net.Conn SHOULD NOT be nil")
 			return
 		}
 
+		//
+		// Read OUTSIDE_SECRET phase
+		//
 		read_buffer := make([]byte, 64)
-
 		read, err := inside.Read(read_buffer)
 		if err != nil {
 			log.Println("Outside read from inside failed , err: ", err.Error())
@@ -125,7 +144,10 @@ func Outside() {
 			continue
 		}
 
-		// THIS CAN FAIL USE A WRITE ALL FUNCTION!!!!
+		//
+		// Write OK phase
+		//
+		// ALERT: THIS CAN FAIL USE A WRITE ALL FUNCTION!!!!
 		write, err := inside.Write([]byte("OK"))
 		if err != nil {
 			log.Println("Outside write to inside failed , err: ", err.Error())
@@ -139,6 +161,9 @@ func Outside() {
 			continue
 		}
 
+		//
+		// Read OK phase
+		//
 		read_buffer = make([]byte, 2)
 		read, err = inside.Read(read_buffer)
 		if err != nil {
