@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -80,10 +81,10 @@ func Outside() {
 	var inside_client_tcp_count = 0
 	var inside_client_tcp_list []net.Conn = nil
 
+	//
+	// Listener start Phase
+	//
 	for {
-		//
-		// Listener start Phase
-		//
 		listener_addr, err = net.ResolveTCPAddr("tcp", OUT_ADDR_STR)
 		if err != nil {
 			log.Println("Outside ResolveTCPAddr failed , err: ", err.Error())
@@ -110,6 +111,7 @@ func Outside() {
 
 	for {
 		accept_loop += 1
+		inside_client_tcp_count = 0
 		log.Println("Outside accept inside loop ", accept_loop, " started")
 
 		//
@@ -193,7 +195,7 @@ func Outside() {
 		//
 		// Accept inside clients phase
 		//
-		inside_client_tcp_list = make([]net.Conn, 64)
+		inside_client_tcp_list = make([]net.Conn, TCP_CLIENT_SIZE)
 		for { // ALERT: INFINITE LOOP CAN HAPPEN
 
 			client, err := listener.Accept()
@@ -202,7 +204,10 @@ func Outside() {
 				continue
 			}
 
-			if client.RemoteAddr().String() == inside.RemoteAddr().String() {
+			inside_remote_addr := strings.Split(client.RemoteAddr().String(), ":")[0]
+			client_remote_addr := strings.Split(inside.RemoteAddr().String(), ":")[0]
+
+			if inside_remote_addr == client_remote_addr {
 
 				inside_client_tcp_list[inside_client_tcp_count] = client
 				inside_client_tcp_count += 1
@@ -212,7 +217,7 @@ func Outside() {
 			// TODO: READ AND WRITE OK FROM INSIDE/OUTSIDE for each client?
 
 			if inside_client_tcp_count == TCP_CLIENT_SIZE {
-				log.Println("Outside connected to 64 inside clients")
+				log.Println("Outside connected to", TCP_CLIENT_SIZE, " inside clients")
 				break
 			}
 
@@ -234,7 +239,7 @@ func Outside() {
 		//
 		done := make(chan bool, 1)
 		go func() {
-			time.Sleep(time.Second * 20)
+			time.Sleep(time.Second * 2)
 
 			// Tunnel(listener, inside, inside_client_tcp_list)
 			done <- true
