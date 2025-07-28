@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -241,15 +242,17 @@ func Outside() {
 		// TODO: MAYBE remove the whole goroutine? should behave the same
 		done := make(chan bool, 1)
 		go func() {
-			time.Sleep(time.Second * 2)
 
-			// Tunnel(listener, inside, inside_client_tcp_list)
+			Tunnel(listener, inside, inside_client_tcp_list)
+
+			log.Println("Tunnel ended")
+
 			done <- true
 
 		}()
 		<-done
 
-		log.Println("Outside accept inside loop ended")
+		log.Println("Outside accept inside loop ", accept_loop, "ended")
 	}
 
 }
@@ -293,34 +296,115 @@ func Tunnel(outside *net.TCPListener, inside net.Conn, ictl []net.Conn) {
 		return
 	}
 
+	done := make(chan bool, 1)
+
+	go func() {
+		PingInside(inside)
+
+		inside.Close()
+		tcp_listener.Close()
+		// TODO: Close inside/client Connections
+
+		log.Println("PingInside ended")
+
+		done <- true
+	}()
+
+	go func() {
+		for {
+			// TODO: MAYBE Less CPU?
+			if client_tcp_count == TCP_CLIENT_SIZE {
+				time.Sleep(time.Second * 1)
+
+				continue
+			}
+
+			client, err := tcp_listener.Accept()
+			if err != nil {
+				// log.Print(err)
+				continue
+			}
+
+			client_id, err := first_occupied(client_tcp_occupied)
+			if err != nil {
+				log.Fatalln("list shouldnt be full but it is ,err:", err.Error())
+				return
+			}
+			println(client_id)
+
+			client_tcp_count += 1
+			client_tcp_list[client_id] = client
+			client_tcp_occupied[client_id] = true
+
+			go ListenClient(client_tcp_list[client_id], ictl[client_id], client_id, &client_tcp_count, client_tcp_occupied)
+			go ListenInside(client_tcp_list[client_id], ictl[client_id], client_id, &client_tcp_count, client_tcp_occupied)
+
+		}
+	}()
+
+	<-done
+
+}
+
+func PingInside(inside net.Conn) {
+	var time_freez time.Time = time.Now()
+
+	log.Println("PingInside started")
+
 	for {
-		// TODO: MAYBE Less CPU?
-		if client_tcp_count == TCP_CLIENT_SIZE {
-			time.Sleep(time.Second * 1)
-			continue
-		}
+		//
+		// CHECK TIMEOUT PHASE
+		//
 
-		client, err := tcp_listener.Accept()
-		if err != nil {
-			// log.Print(err)
-			continue
-		}
-
-		client_id, err := first_occupied(client_tcp_occupied)
-		if err != nil {
-			log.Fatalln("list shouldnt be full but it is ,err:", err.Error())
+		// Check if last read+write happened withing 2 seconds
+		if time.Since(time_freez).Seconds() > 2 {
 			return
 		}
 
-		client_tcp_count += 1
-		client_tcp_list[client_id] = client
-		client_tcp_occupied[client_id] = true
+		//
+		// Write 0 phase
+		//
 
-		go ListenClient(client_tcp_list[client_id], ictl[client_id], client_id, &client_tcp_count, client_tcp_occupied)
-		go ListenInside(client_tcp_list[client_id], ictl[client_id], client_id, &client_tcp_count, client_tcp_occupied)
+		write, err := inside.Write([]byte("0"))
+		if errors.Is(err, syscall.EPIPE) {
+			log.Println("PingInside EPIPE")
+			return
+		}
+		if err != nil {
+			// log.Println("PingInside write to inside failed , err: ", io.ErrClosedPipe.Error())
+			// log.Println("PingInside write to inside failed , err: ", syscall.ESPIPE)
+			// log.Println("PingInside write to inside failed , err: ", syscall.EPIPE)
+			log.Println("PingInside write to inside failed , err: ", err.Error())
+			continue
+		}
+		if write == 0 {
+			continue
+		}
 
+		//
+		// Read 1 phase
+		//
+
+		read_buffer := make([]byte, 1)
+		read, err := inside.Read(read_buffer)
+		if err != nil {
+			log.Println("PingInside read from inside failed , err: ", err.Error())
+			continue
+		}
+		if read == 0 {
+			continue
+		}
+
+		if string(read_buffer) == "1" {
+			// log.Println("PingInside read 1 from inside")
+		} else {
+			log.Println("PingInside couldnt read 1 from inside")
+			continue
+		}
+
+		time_freez = time.Now()
+		time.Sleep(time.Millisecond * 250)
 	}
-
 }
 
 func ListenClient(client net.Conn, inside net.Conn, client_id int, ctc *int, cto []bool) {
@@ -348,9 +432,20 @@ func ListenClient(client net.Conn, inside net.Conn, client_id int, ctc *int, cto
 	//
 	// Read from client -> Send to inside PHASE
 	//
+	eof := 0
 	for {
+		if eof > 10 {
+			return
+		}
+
 		read_buffer := make([]byte, PACKET_SIZE)
 		read, err := client.Read(read_buffer)
+
+		if errors.Is(err, io.EOF) {
+			eof += 1
+			time.Sleep(time.Millisecond * 50)
+			continue
+		}
 		if err != nil {
 			log.Println("ListenClient ", client_id, " read from client failed , err:", err.Error())
 			continue
@@ -361,12 +456,34 @@ func ListenClient(client net.Conn, inside net.Conn, client_id int, ctc *int, cto
 
 		write_buffer := make([]byte, read)
 		copy(write_buffer, read_buffer[:read])
+
 		write, err := WriteAll(inside, write_buffer, read)
+
+		if errors.Is(err, syscall.EPIPE) {
+			//
+			// DEFER CLIENT
+			//
+			*ctc -= 1
+			client.Close()
+			cto[client_id] = false
+
+			log.Println()
+			log.Println()
+			log.Println()
+			log.Println()
+			log.Println()
+			log.Println()
+			log.Println()
+			log.Println()
+
+			break
+		}
+
 		if err != nil {
+			log.Println("ListenClient ", client_id, " write all to inside failed , err:", err.Error())
 			continue
 		}
 		if write != 1 {
-			log.Println("ListenClient ", client_id, " write all to inside failed , err:", err.Error())
 			continue
 		}
 	}
@@ -378,9 +495,20 @@ func ListenInside(client net.Conn, inside net.Conn, client_id int, ctc *int, cto
 	//
 	// Read from inside -> Send to client PHASE
 	//
+	eof := 0
 	for {
+		if eof > 10 {
+			return
+		}
+
 		read_buffer := make([]byte, PACKET_SIZE)
 		read, err := inside.Read(read_buffer)
+
+		if errors.Is(err, io.EOF) {
+			eof += 1
+			time.Sleep(time.Millisecond * 50)
+			continue
+		}
 		if err != nil {
 			log.Println("ListenClient ", client_id, " read from inside failed , err:", err.Error())
 			continue
@@ -392,20 +520,26 @@ func ListenInside(client net.Conn, inside net.Conn, client_id int, ctc *int, cto
 		write_buffer := make([]byte, read)
 		copy(write_buffer, read_buffer[:read])
 		write, err := WriteAll(client, write_buffer, read)
+		if errors.Is(err, syscall.EPIPE) {
+			//
+			// BREAK HAPPENS IN ListenClient
+			//
+
+			break
+		}
 		if err != nil {
+			log.Println("ListenClient ", client_id, " write all to client failed , err:", err.Error())
 			continue
 		}
 		if write != 1 {
-			log.Println("ListenClient ", client_id, " write all to client failed , err:", err.Error())
 			continue
 		}
 	}
 }
 
 func first_occupied(list []bool) (int, error) {
-
 	for i, v := range list {
-		if v {
+		if !v {
 			return i, nil
 		}
 		continue
@@ -454,8 +588,17 @@ func WriteAll(conn net.Conn, buf []byte, len int) (int, error) {
 	var i = 0
 	for i < len { // ALERT: INFINITE LOOP CAN HAPPEN
 		write, err := conn.Write(buf[i:])
+
+		//
+		// TODO: THIS DOESNT WORK FIX IT!!
+		//
+		if errors.Is(err, syscall.EPIPE) {
+			log.Println("WriteAll failed ,broken pipe err:", err.Error())
+			return 0, err
+		}
+
 		if err != nil {
-			log.Println("WriteAll failed , err", err)
+			log.Println("WriteAll failed , err", err.Error())
 			continue
 		}
 
