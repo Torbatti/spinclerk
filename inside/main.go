@@ -17,11 +17,6 @@ const (
 	// 2097151 is the max len that fit in 3 byte varint
 	PACKET_SIZE = 2097151 + 3
 
-	// packet size + 3 byte info
-	// 1 byte for protocol / 2 byte for client id
-	// not the most effient way ikr
-	MSG_SIZE = 2097154 + 3
-
 	UDP_ADDR_STR = "0.0.0.0:19132"
 	TCP_ADDR_STR = "0.0.0.0:25565"
 

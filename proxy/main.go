@@ -6,8 +6,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+)
 
-	"github.com/spf13/cobra"
+const (
+	PACKET_SIZE = 2097154
 )
 
 var Version = "(untracked)"
@@ -17,6 +19,9 @@ func main() {
 	udp_addr_string := "0.0.0.0:19653"
 	tcp_addr_string := "0.0.0.0:19652"
 
+	// TODO(AABI): Rework cli
+	// --udp=0.0.0.0:19653
+	// --tcp=0.0.0.0:19652
 	args := os.Args
 	for i, v := range args {
 		switch v {
@@ -54,22 +59,6 @@ func main() {
 
 	<-done
 
-}
-
-type Proxy struct {
-	RootCmd *cobra.Command
-}
-
-type Config struct {
-}
-
-const (
-	PACKET_SIZE = 2097154
-)
-
-func ReadVarInt(buffer []byte) int {
-
-	return 0
 }
 
 func ListenTcp(addr_string string) {
