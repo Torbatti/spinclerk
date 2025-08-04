@@ -1,6 +1,9 @@
 #!/bin/bash
 BASEDIR="$PWD"
 
+# https://www.digitalocean.com/community/tutorials/if-else-in-shell-scripts
+# https://medium.com/@kadimasam/shell-scripting-comparison-operators-and-if-statements-9e0277fd60b8
+
 export GOROOT=$BASEDIR/tool/go
 export GOPATH=$GOROOT/bin
 export GO=$GOPATH/go
@@ -27,7 +30,7 @@ mkdir -p build
 # --- Pre Build/Run/Debug Step ------------------------------------------------
 if [[ -z $proxy ]] && [[ -z $inside ]] && [[ -z $outside ]]
 then
-    echo "[ NOTE: you did not specified a project,SELECT ALL is default! ]" 
+    echo "[ NOTE: you did not specified a project, SELECT ALL is enabled! ]" 
     proxy=1;
     inside=1;
     outside=1;
@@ -80,15 +83,18 @@ fi
 if [[ $build -eq 1 ]]
 then 
     cd proxy
-    if [[ $proxy -eq 1 ]]; then $GO build -o ../build/proxy main.go && echo "[ built proxy bin ]";fi
+    if [[ $proxy -eq 1 ]] && [[ -z $debug ]] ; then $GO build -o ../build/proxy main.go && echo "[ built proxy bin ]";fi
+    if [[ $proxy -eq 1 ]] && [[ ! -z $debug ]] ; then $GO build -o ../build/proxy main.go -ldflags=-w -gcflags=all="-N -l" && echo "[ built proxy debug bin ]";fi
     cd ..
 
     cd inside
-    if [[ $inside -eq 1 ]]; then $GO build -o ../build/inside main.go && echo "[ built inside bin ]";fi
+    if [[ $inside -eq 1 ]] && [[ -z $debug ]] ; then $GO build -o ../build/inside main.go && echo "[ built inside bin ]";fi
+    if [[ $inside -eq 1 ]] && [[ ! -z $debug ]] ; then $GO build -o ../build/inside main.go -ldflags=-w -gcflags=all="-N -l" && echo "[ built inside debug bin ]";fi
     cd ..
 
     cd outside
-    if [[ $outside -eq 1 ]]; then $GO build -o ../build/outside main.go && echo "[ built outside bin ]";fi
+    if [[ $outside -eq 1 ]] && [[ -z $debug ]] ; then $GO build -o ../build/outside main.go && echo "[ built outside bin ]";fi
+    if [[ $outside -eq 1 ]] && [[ ! -z $debug ]] ; then $GO build -o ../build/outside main.go -ldflags=-w -gcflags=all="-N -l" && echo "[ built outside debug bin ]";fi
     cd ..
 fi
 
@@ -104,6 +110,7 @@ if [[ $debug -eq 1 ]]
 then
     echo "[ debugger starting ]"
     echo "[ https://go.dev/doc/gdb ]"
+    echo "[ https://stackoverflow.com/questions/29528732/gdb-print-all-values-in-char-array ]"
     if [[ $proxy -eq 1 ]]; then gdb --silent ./proxy ;fi
     if [[ $inside -eq 1 ]]; then gdb --silent ./inside ;fi
     if [[ $outside -eq 1 ]]; then gdb --silent ./outside ;fi
