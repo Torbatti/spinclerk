@@ -5,6 +5,10 @@ export GOROOT=$BASEDIR/tool/go
 export GOPATH=$GOROOT/bin
 export GO=$GOPATH/go
 
+# $GO tool dist list
+export GOOS=linux
+export GOARCH=amd64
+
 # --- Unpack Arguments --------------------------------------------------------
 for arg in "$@"; do declare $arg='1'; done
 
@@ -57,7 +61,6 @@ then
         exit 1
     fi
 fi
-
 # --- Tidy ; Build ; Run ; Debug ----------------------------------------------
 if [[ $tidy -eq 1 ]]
 then 
